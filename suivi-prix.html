@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Suivi Prix">
+<title>Suivi Prix · Carrefour Market</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
+
+  :root {
+    --ink: #1F4D3D;
+    --ink-soft: #3E6B5A;
+    --paper: #FBFAF6;
+    --paper-dark: #EFEDE4;
+    --red: #B23A2E;
+    --green: #2F7A4D;
+    --text: #232120;
+    --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+    --sans: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--paper); font-family: var(--sans); color: var(--text); -webkit-tap-highlight-color: transparent; }
+  #app { max-width: 480px; margin: 0 auto; min-height: 100vh; padding-bottom: 84px; }
+
+  header.topbar { position: sticky; top: 0; background: var(--paper); z-index: 10; border-bottom: 1px solid var(--paper-dark); padding: 14px 16px 10px; display: flex; align-items: center; gap: 8px; }
+  header.topbar .back { background: none; border: none; color: var(--ink); padding: 4px; cursor: pointer; display: none; }
+  header.topbar .back svg { display: block; }
+  header.topbar .title { font-family: var(--mono); font-weight: 700; font-size: 13px; letter-spacing: 0.14em; color: var(--ink); }
+
+  .setup-banner { margin: 14px 16px; padding: 12px 14px; background: #FFF4E8; border: 1px solid #E0B27A; border-radius: 8px; font-size: 12px; font-family: var(--sans); color: #7A4A16; line-height: 1.5; }
+  .setup-banner code { background: #fff; padding: 1px 4px; border-radius: 3px; }
+
+  .tab-content { padding: 0 16px 24px; }
+
+  .empty-state { padding: 60px 30px; text-align: center; font-family: var(--sans); font-size: 13px; color: var(--ink-soft); }
+
+  /* Scan tab */
+  .scan-wrap { padding: 40px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .scan-copy { font-family: var(--sans); font-size: 13px; color: var(--text); margin-bottom: 16px; line-height: 1.5; max-width: 300px; }
+  textarea.paste-box { width: 100%; max-width: 300px; box-sizing: border-box; font-family: var(--mono); font-size: 11px; padding: 10px; border: 1px solid var(--paper-dark); border-radius: 8px; margin-bottom: 10px; resize: vertical; background: #fff; color: var(--text); }
+  .err-msg { font-family: var(--sans); font-size: 12px; color: var(--red); margin-bottom: 10px; max-width: 300px; }
+
+  .btn { border: none; border-radius: 8px; padding: 12px 18px; font-family: var(--sans); font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .btn-primary { background: var(--ink); color: var(--paper); width: 100%; max-width: 300px; }
+  .btn-primary:disabled { opacity: 0.5; cursor: default; }
+  .btn-secondary { background: #fff; color: var(--ink); border: 1px solid var(--ink-soft); flex: 1; }
+  .btn-primary.review { flex: 1; }
+
+  /* Review form */
+  .review-note { font-family: var(--sans); font-size: 13px; color: var(--ink-soft); margin: 12px 0 10px; }
+  .field-label { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); display: block; margin-bottom: 3px; }
+  .field-label.mini { font-size: 9px; letter-spacing: 0.06em; }
+  input[type="text"], input[type="number"], input[type="date"] {
+    width: 100%; box-sizing: border-box; font-family: var(--mono); font-size: 13px; padding: 8px 10px;
+    border: 1px solid var(--paper-dark); border-radius: 6px; margin-bottom: 8px; color: var(--text); background: #fff;
+  }
+  input:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .item-card { background: #fff; border: 1px solid var(--paper-dark); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+  .item-row-top { display: flex; gap: 6px; align-items: center; }
+  .item-row-top input { flex: 1; margin-bottom: 0; }
+  .del-item { background: none; border: none; color: var(--red); padding: 4px; cursor: pointer; }
+  .item-fields { display: flex; gap: 8px; margin-top: 6px; }
+  .item-fields > div { flex: 1; }
+  .item-fields input { margin-bottom: 0; }
+  .actions-row { display: flex; gap: 10px; margin-top: 16px; }
+
+  /* History tab */
+  .receipt-block { margin-bottom: 14px; }
+  .ticket-edge { width: 100%; height: 10px; display: block; }
+  .receipt-body { background: #fff; padding: 10px 14px; }
+  .receipt-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .receipt-date { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--ink); }
+  .receipt-del { background: none; border: none; color: var(--red); padding: 2px; cursor: pointer; }
+  .receipt-line { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px; color: var(--text); padding: 2px 0; }
+  .receipt-line span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 65%; }
+  .receipt-total { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--ink); border-top: 1px dashed var(--paper-dark); margin-top: 6px; padding-top: 6px; }
+
+  /* Products tab */
+  .product-row { width: 100%; text-align: left; background: #fff; border: 1px solid var(--paper-dark); border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+  .product-name { font-family: var(--sans); font-size: 13px; color: var(--text); font-weight: 500; }
+  .product-meta { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+  .product-price-wrap { display: flex; align-items: center; gap: 6px; }
+  .product-price { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--ink); }
+
+  .product-detail-back { background: none; border: none; color: var(--ink-soft); font-family: var(--sans); font-size: 13px; padding: 4px 0 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  .product-title { font-family: var(--sans); font-weight: 600; font-size: 15px; color: var(--text); margin-bottom: 4px; }
+  .product-delta { font-family: var(--mono); font-size: 12px; margin-bottom: 16px; }
+  .chart-box { background: #fff; border: 1px solid var(--paper-dark); border-radius: 10px; padding: 16px 8px 8px; }
+  .history-line { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px; color: var(--text); padding: 6px 0; border-bottom: 1px solid var(--paper-dark); }
+
+  /* Bottom nav */
+  nav.bottomnav { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid var(--paper-dark); display: flex; padding-bottom: env(safe-area-inset-bottom, 0px); max-width: 480px; margin: 0 auto; }
+  nav.bottomnav button { flex: 1; background: none; border: none; padding: 10px 0 8px; display: flex; flex-direction: column; align-items: center; gap: 3px; color: #9C9A92; cursor: pointer; }
+  nav.bottomnav button.active { color: var(--ink); }
+  nav.bottomnav span { font-family: var(--mono); font-size: 9px; letter-spacing: 0.05em; }
+
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .spin { animation: spin 1s linear infinite; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+// ==== CONFIGURATION SUPABASE ====
+// Remplace ces deux valeurs par celles de ton projet Supabase (Settings → API)
+const SUPABASE_URL = "https://bphvxxfoyopnqeuoecmu.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_whpggSlsGZdmd4drxfP0eQ_4qWNrP1P";
+// ================================
+
+const needsSetup = SUPABASE_URL.startsWith("YOUR_") || SUPABASE_ANON_KEY.startsWith("YOUR_");
+const sb = needsSetup ? null : window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const ICONS = {
+  camera: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>',
+  clock: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+  trend: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
+  trendUp: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
+  trendDown: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>',
+  minus: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  trash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+  back: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>',
+  check: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+  x: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
+};
+
+let state = {
+  tab: "scan",
+  receipts: [],
+  loaded: false,
+  pending: null,       // { date, items: [...], totalTTC }
+  errMsg: "",
+  saving: false,
+  saveErr: "",
+  selectedProduct: null
+};
+
+function normalize(desc) {
+  return desc.replace(/^\*+/, "").trim().toUpperCase();
+}
+function formatEUR(n) {
+  if (n === null || n === undefined || isNaN(n)) return "—";
+  return n.toFixed(2).replace(".", ",") + " €";
+}
+function formatDateShort(iso) {
+  if (!iso) return "?";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "2-digit" });
+}
+
+async function loadReceipts() {
+  if (!sb) { state.receipts = []; state.loaded = true; render(); return; }
+  const { data, error } = await sb.from("receipts").select("*").order("date", { ascending: true });
+  if (error) {
+    console.error(error);
+    state.receipts = [];
+  } else {
+    state.receipts = (data || []).map(r => ({
+      id: r.id, date: r.date, items: r.items, totalTTC: r.total_ttc
+    }));
+  }
+  state.loaded = true;
+  render();
+}
+
+async function saveReceipt(receipt) {
+  const { error } = await sb.from("receipts").insert({
+    date: receipt.date,
+    items: receipt.items,
+    total_ttc: receipt.totalTTC
+  });
+  if (error) throw new Error(error.message);
+}
+
+async function deleteReceipt(id) {
+  const { error } = await sb.from("receipts").delete().eq("id", id);
+  if (error) { console.error(error); return; }
+  state.receipts = state.receipts.filter(r => r.id !== id);
+  render();
+}
+
+function setPendingFromExtracted(extracted) {
+  const items = (extracted.items || []).map(it => ({
+    description: it.description || "",
+    quantite: it.quantite || 1,
+    prixUnitaire: it.prixUnitaire ?? it.montantTTC ?? 0,
+    montantTTC: it.montantTTC ?? it.prixUnitaire ?? 0
+  }));
+  state.pending = {
+    date: extracted.date || new Date().toISOString().slice(0, 10),
+    items,
+    totalTTC: extracted.totalTTC ?? null
+  };
+}
+
+function parseRaw() {
+  const raw = document.getElementById("paste-box").value;
+  state.errMsg = "";
+  try {
+    const clean = raw.replace(/```json|```/g, "").trim();
+    const jsonStart = clean.indexOf("{");
+    const jsonEnd = clean.lastIndexOf("}");
+    const parsed = JSON.parse(clean.slice(jsonStart, jsonEnd + 1));
+    if (!parsed.items || parsed.items.length === 0) throw new Error("vide");
+    setPendingFromExtracted(parsed);
+  } catch (e) {
+    state.errMsg = "Texte non reconnu. Vérifie que tu as bien collé le bloc complet fourni dans le chat.";
+  }
+  render();
+}
+
+async function confirmSave() {
+  state.saving = true;
+  state.saveErr = "";
+  render();
+  try {
+    await saveReceipt(state.pending);
+    state.pending = null;
+    state.saving = false;
+    await loadReceipts();
+    state.tab = "scan";
+    render();
+  } catch (err) {
+    state.saveErr = "Échec de l'enregistrement. Détail : " + (err.message || String(err));
+    state.saving = false;
+    render();
+  }
+}
+
+function cancelPending() {
+  state.pending = null;
+  state.saveErr = "";
+  render();
+}
+
+function updatePendingItem(idx, field, value) {
+  const items = [...state.pending.items];
+  items[idx] = { ...items[idx], [field]: field === "description" ? value : (parseFloat(value) || 0) };
+  state.pending.items = items;
+  render(true);
+}
+function removePendingItem(idx) {
+  state.pending.items = state.pending.items.filter((_, i) => i !== idx);
+  render();
+}
+
+function trendOf(history) {
+  if (history.length < 2) return "flat";
+  const last = history[history.length - 1].prixUnitaire;
+  const prev = history[history.length - 2].prixUnitaire;
+  if (last > prev + 0.005) return "up";
+  if (last < prev - 0.005) return "down";
+  return "flat";
+}
+
+function buildProductsMap() {
+  const map = {};
+  state.receipts.forEach(r => {
+    (r.items || []).forEach(it => {
+      const key = normalize(it.description);
+      if (!map[key]) map[key] = [];
+      map[key].push({ date: r.date, prixUnitaire: it.prixUnitaire, label: it.description });
+    });
+  });
+  Object.values(map).forEach(arr => arr.sort((a, b) => (a.date || "").localeCompare(b.date || "")));
+  return map;
+}
+
+function ticketEdgeSVG(top) {
+  const teeth = 24;
+  let circles = "";
+  for (let i = 0; i < teeth; i++) {
+    circles += `<circle cx="${(i + 0.5) * (240 / teeth)}" cy="${top ? 0 : 10}" r="5" fill="var(--paper-dark)"/>`;
+  }
+  return `<svg class="ticket-edge" viewBox="0 0 240 10" preserveAspectRatio="none" style="transform:${top ? 'none' : 'scaleY(-1)'}">${circles}<rect x="0" y="${top ? 5 : 0}" width="240" height="5" fill="var(--paper)"/></svg>`;
+}
+
+function lineChartSVG(chartData) {
+  const w = 320, h = 200, padL = 40, padR = 16, padT = 14, padB = 22;
+  const vals = chartData.map(d => d.prix);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const range = (max - min) || 1;
+  const yFor = v => padT + (h - padT - padB) * (1 - (v - min) / range);
+  const xFor = i => padL + (w - padL - padR) * (chartData.length > 1 ? i / (chartData.length - 1) : 0.5);
+  const points = chartData.map((d, i) => `${xFor(i)},${yFor(d.prix)}`).join(" ");
+  let gridLines = "";
+  const steps = 4;
+  for (let s = 0; s <= steps; s++) {
+    const v = min + (range * s) / steps;
+    const y = yFor(v);
+    gridLines += `<line x1="${padL}" y1="${y}" x2="${w - padR}" y2="${y}" stroke="var(--paper-dark)" stroke-width="1"/>`;
+    gridLines += `<text x="${padL - 6}" y="${y + 3}" font-family="var(--mono)" font-size="9" fill="var(--ink-soft)" text-anchor="end">${v.toFixed(2)}</text>`;
+  }
+  let xLabels = "";
+  chartData.forEach((d, i) => {
+    if (i === 0 || i === chartData.length - 1 || chartData.length <= 5) {
+      xLabels += `<text x="${xFor(i)}" y="${h - 6}" font-family="var(--mono)" font-size="9" fill="var(--ink-soft)" text-anchor="middle">${d.date}</text>`;
+    }
+  });
+  let dots = "";
+  chartData.forEach((d, i) => {
+    dots += `<circle cx="${xFor(i)}" cy="${yFor(d.prix)}" r="3" fill="var(--ink)"/>`;
+  });
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;">${gridLines}<polyline points="${points}" fill="none" stroke="var(--ink)" stroke-width="2"/>${dots}${xLabels}</svg>`;
+}
+
+function render(skipFocusReset) {
+  const app = document.getElementById("app");
+  let html = `<header class="topbar">`;
+  if (state.tab === "product-detail") {
+    html += `<button class="back" style="display:inline-flex" onclick="goBackFromProduct()">${ICONS.back}</button>`;
+  }
+  html += `<div class="title">SUIVI PRIX · CARREFOUR MARKET</div></header>`;
+
+  if (needsSetup) {
+    html += `<div class="setup-banner">Configuration requise : ouvre ce fichier et remplace <code>SUPABASE_URL</code> et <code>SUPABASE_ANON_KEY</code> en haut du script par les valeurs de ton projet Supabase (Settings → API).</div>`;
+  }
+
+  html += `<div class="tab-content">`;
+  if (!state.loaded) {
+    // nothing yet
+  } else if (state.pending) {
+    html += renderReview();
+  } else if (state.tab === "scan") {
+    html += renderScan();
+  } else if (state.tab === "history") {
+    html += renderHistory();
+  } else if (state.tab === "products") {
+    html += renderProducts();
+  } else if (state.tab === "product-detail") {
+    html += renderProductDetail();
+  }
+  html += `</div>`;
+
+  html += `<nav class="bottomnav">
+    <button class="${state.tab === 'scan' && !state.pending ? 'active' : ''}" onclick="switchTab('scan')">${ICONS.camera}<span>SCANNER</span></button>
+    <button class="${state.tab === 'history' ? 'active' : ''}" onclick="switchTab('history')">${ICONS.clock}<span>HISTORIQUE</span></button>
+    <button class="${state.tab === 'products' || state.tab === 'product-detail' ? 'active' : ''}" onclick="switchTab('products')">${ICONS.trend}<span>PRODUITS</span></button>
+  </nav>`;
+
+  app.innerHTML = html;
+
+  if (!skipFocusReset) {
+    const box = document.getElementById("paste-box");
+    if (box) box.value = "";
+  }
+}
+
+function switchTab(tab) {
+  state.tab = tab;
+  state.pending = null;
+  state.selectedProduct = null;
+  render();
+}
+
+function renderScan() {
+  return `
+    <div class="scan-wrap">
+      <div class="scan-copy">Envoie la photo de ton ticket directement dans le chat Claude. Il te répondra avec un bloc de données à copier — colle-le ci-dessous.</div>
+      <textarea id="paste-box" class="paste-box" rows="7" placeholder="Colle ici le bloc fourni par Claude…" oninput="onPasteInput()"></textarea>
+      ${state.errMsg ? `<div class="err-msg">${state.errMsg}</div>` : ""}
+      <button class="btn btn-primary" id="analyze-btn" disabled onclick="parseRaw()">Analyser le texte collé</button>
+    </div>
+  `;
+}
+
+function onPasteInput() {
+  const box = document.getElementById("paste-box");
+  const btn = document.getElementById("analyze-btn");
+  btn.disabled = !box.value.trim();
+}
+
+function renderReview() {
+  const p = state.pending;
+  let itemsHtml = "";
+  p.items.forEach((it, idx) => {
+    itemsHtml += `
+      <div class="item-card">
+        <div class="item-row-top">
+          <input type="text" value="${escapeAttr(it.description)}" oninput="updatePendingItem(${idx},'description',this.value)">
+          <button class="del-item" onclick="removePendingItem(${idx})">${ICONS.trash}</button>
+        </div>
+        <div class="item-fields">
+          <div>
+            <label class="field-label mini">QTÉ</label>
+            <input type="number" step="1" value="${it.quantite}" oninput="updatePendingItem(${idx},'quantite',this.value)">
+          </div>
+          <div>
+            <label class="field-label mini">PRIX UNIT.</label>
+            <input type="number" step="0.01" value="${it.prixUnitaire}" oninput="updatePendingItem(${idx},'prixUnitaire',this.value)">
+          </div>
+          <div>
+            <label class="field-label mini">MONTANT TTC</label>
+            <input type="number" step="0.01" value="${it.montantTTC}" oninput="updatePendingItem(${idx},'montantTTC',this.value)">
+          </div>
+        </div>
+      </div>
+    `;
+  });
+  return `
+    <div class="review-note">Vérifie et corrige si besoin avant d'enregistrer.</div>
+    <label class="field-label">DATE</label>
+    <input type="date" value="${p.date}" onchange="state.pending.date=this.value">
+    ${itemsHtml}
+    <div class="actions-row">
+      <button class="btn btn-secondary" onclick="cancelPending()">${ICONS.x} Annuler</button>
+      <button class="btn btn-primary review" ${state.saving ? "disabled" : ""} onclick="confirmSave()">${ICONS.check} ${state.saving ? "Enregistrement…" : "Enregistrer"}</button>
+    </div>
+    ${state.saveErr ? `<div class="err-msg">${state.saveErr}</div>` : ""}
+  `;
+}
+
+function renderHistory() {
+  if (state.receipts.length === 0) {
+    return `<div class="empty-state">Aucun ticket enregistré pour l'instant.</div>`;
+  }
+  const sorted = [...state.receipts].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  let html = "";
+  sorted.forEach(r => {
+    const total = r.totalTTC ?? (r.items || []).reduce((s, it) => s + (it.montantTTC || 0), 0);
+    let lines = "";
+    (r.items || []).forEach(it => {
+      lines += `<div class="receipt-line"><span>${it.quantite > 1 ? it.quantite + "x " : ""}${escapeHtml(it.description)}</span><span>${formatEUR(it.montantTTC)}</span></div>`;
+    });
+    html += `
+      <div class="receipt-block">
+        ${ticketEdgeSVG(true)}
+        <div class="receipt-body">
+          <div class="receipt-head">
+            <div class="receipt-date">${formatDateShort(r.date)}</div>
+            <button class="receipt-del" onclick="deleteReceipt('${r.id}')">${ICONS.trash}</button>
+          </div>
+          ${lines}
+          <div class="receipt-total"><span>TOTAL</span><span>${formatEUR(total)}</span></div>
+        </div>
+        ${ticketEdgeSVG(false)}
+      </div>
+    `;
+  });
+  return html;
+}
+
+function renderProducts() {
+  const map = buildProductsMap();
+  const products = Object.entries(map)
+    .map(([key, history]) => ({ key, history, last: history[history.length - 1] }))
+    .sort((a, b) => (b.last.date || "").localeCompare(a.last.date || ""));
+  if (products.length === 0) {
+    return `<div class="empty-state">Enregistre au moins un ticket pour voir apparaître tes produits ici.</div>`;
+  }
+  let html = "";
+  products.forEach(p => {
+    const trend = trendOf(p.history);
+    const icon = trend === "up" ? ICONS.trendUp : trend === "down" ? ICONS.trendDown : ICONS.minus;
+    const color = trend === "up" ? "var(--red)" : trend === "down" ? "var(--green)" : "var(--ink-soft)";
+    html += `
+      <div class="product-row" onclick="openProduct('${escapeAttr(p.key)}')">
+        <div>
+          <div class="product-name">${escapeHtml(p.key)}</div>
+          <div class="product-meta">${p.history.length} achat${p.history.length > 1 ? "s" : ""} · dernier le ${formatDateShort(p.last.date)}</div>
+        </div>
+        <div class="product-price-wrap">
+          <span class="product-price">${formatEUR(p.last.prixUnitaire)}</span>
+          <span style="color:${color}">${icon}</span>
+        </div>
+      </div>
+    `;
+  });
+  return html;
+}
+
+function openProduct(key) {
+  state.selectedProduct = key;
+  state.tab = "product-detail";
+  render();
+}
+function goBackFromProduct() {
+  state.selectedProduct = null;
+  state.tab = "products";
+  render();
+}
+
+function renderProductDetail() {
+  const map = buildProductsMap();
+  const history = map[state.selectedProduct] || [];
+  if (history.length === 0) return `<div class="empty-state">Produit introuvable.</div>`;
+  const first = history[0].prixUnitaire;
+  const last = history[history.length - 1].prixUnitaire;
+  const delta = last - first;
+  const pct = first ? (delta / first) * 100 : 0;
+  const deltaColor = delta > 0 ? "var(--red)" : delta < 0 ? "var(--green)" : "var(--ink-soft)";
+  const chartData = history.map(h => ({ date: formatDateShort(h.date), prix: h.prixUnitaire }));
+  let historyLines = "";
+  history.slice().reverse().forEach(h => {
+    historyLines += `<div class="history-line"><span>${formatDateShort(h.date)}</span><span>${formatEUR(h.prixUnitaire)}</span></div>`;
+  });
+  return `
+    <div class="product-title">${escapeHtml(state.selectedProduct)}</div>
+    <div class="product-delta" style="color:${deltaColor}">
+      ${delta === 0 ? "stable" : (delta > 0 ? "+" : "") + delta.toFixed(2) + " € (" + (pct > 0 ? "+" : "") + pct.toFixed(1) + "%) depuis le premier ticket"}
+    </div>
+    <div class="chart-box">${lineChartSVG(chartData)}</div>
+    <div style="margin-top:16px;">${historyLines}</div>
+  `;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function escapeAttr(s) {
+  return escapeHtml(s).replace(/`/g, "&#96;");
+}
+
+// init
+render();
+loadReceipts();
+</script>
+</body>
+</html>
