@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Suivi Prix">
+<title>Suivi Prix · Carrefour Market</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
+
+  :root {
+    --ink: #1F4D3D;
+    --ink-soft: #3E6B5A;
+    --paper: #FBFAF6;
+    --paper-dark: #EFEDE4;
+    --red: #B23A2E;
+    --green: #2F7A4D;
+    --text: #232120;
+    --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+    --sans: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--paper); font-family: var(--sans); color: var(--text); -webkit-tap-highlight-color: transparent; }
+  #app { max-width: 520px; margin: 0 auto; min-height: 100vh; padding-bottom: 84px; }
+
+  header.topbar { position: sticky; top: 0; background: var(--paper); z-index: 10; border-bottom: 1px solid var(--paper-dark); padding: 14px 16px 10px; display: flex; align-items: center; gap: 8px; }
+  header.topbar .back { background: none; border: none; color: var(--ink); padding: 4px; cursor: pointer; display: none; }
+  header.topbar .title { font-family: var(--mono); font-weight: 700; font-size: 13px; letter-spacing: 0.14em; color: var(--ink); }
+
+  .setup-banner { margin: 14px 16px; padding: 12px 14px; background: #FFF4E8; border: 1px solid #E0B27A; border-radius: 8px; font-size: 12px; font-family: var(--sans); color: #7A4A16; line-height: 1.5; }
+  .setup-banner code { background: #fff; padding: 1px 4px; border-radius: 3px; }
+
+  .tab-content { padding: 0 16px 24px; }
+  .empty-state { padding: 60px 30px; text-align: center; font-family: var(--sans); font-size: 13px; color: var(--ink-soft); }
+  .section-label { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); letter-spacing: 0.06em; margin: 18px 0 8px; }
+  .helper-text { font-family: var(--sans); font-size: 12px; color: var(--ink-soft); line-height: 1.5; margin-bottom: 10px; }
+
+  .btn { border: none; border-radius: 8px; padding: 12px 18px; font-family: var(--sans); font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .btn-primary { background: var(--ink); color: var(--paper); width: 100%; }
+  .btn-primary:disabled { opacity: 0.5; cursor: default; }
+  .btn-secondary { background: #fff; color: var(--ink); border: 1px solid var(--ink-soft); }
+  .btn-ghost { background: none; border: 1px dashed var(--ink-soft); color: var(--ink-soft); width: 100%; padding: 10px; font-size: 13px; }
+  .actions-row { display: flex; gap: 10px; margin-top: 14px; }
+  .actions-row .btn { flex: 1; }
+
+  .field-label { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); display: block; margin-bottom: 3px; }
+  input[type="text"], input[type="number"], input[type="date"], textarea {
+    width: 100%; box-sizing: border-box; font-family: var(--mono); font-size: 13px; padding: 8px 10px;
+    border: 1px solid var(--paper-dark); border-radius: 6px; color: var(--text); background: #fff;
+  }
+  input:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+  .entry-row { background: #fff; border: 1px solid var(--paper-dark); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+  .entry-row-top { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .entry-row-top input { flex: 1; }
+  .del-row { background: none; border: none; color: var(--red); padding: 4px; cursor: pointer; flex-shrink: 0; }
+  .entry-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .entry-grid > div { min-width: 0; }
+  .entry-grid label { font-size: 9px; }
+
+  .err-msg { font-family: var(--sans); font-size: 12px; color: var(--red); margin: 8px 0; }
+
+  .toggle-link { background: none; border: none; color: var(--ink-soft); font-family: var(--sans); font-size: 12px; text-decoration: underline; cursor: pointer; padding: 6px 0; }
+
+  /* History */
+  .receipt-block { margin-bottom: 14px; }
+  .ticket-edge { width: 100%; height: 10px; display: block; }
+  .receipt-body { background: #fff; padding: 10px 14px; }
+  .receipt-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .receipt-date { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--ink); }
+  .receipt-del { background: none; border: none; color: var(--red); padding: 2px; cursor: pointer; }
+  .receipt-line { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px; color: var(--text); padding: 2px 0; }
+  .receipt-line span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 65%; }
+  .receipt-total { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--ink); border-top: 1px dashed var(--paper-dark); margin-top: 6px; padding-top: 6px; }
+
+  /* Products */
+  .product-row { width: 100%; text-align: left; background: #fff; border: 1px solid var(--paper-dark); border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+  .product-name { font-family: var(--sans); font-size: 13px; color: var(--text); font-weight: 500; }
+  .product-meta { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+  .product-price-wrap { display: flex; align-items: center; gap: 6px; }
+  .product-price { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--ink); }
+  .product-detail-back { background: none; border: none; color: var(--ink-soft); font-family: var(--sans); font-size: 13px; padding: 4px 0 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  .product-title { font-family: var(--sans); font-weight: 600; font-size: 15px; color: var(--text); margin-bottom: 4px; }
+  .product-delta { font-family: var(--mono); font-size: 12px; margin-bottom: 16px; }
+  .chart-box { background: #fff; border: 1px solid var(--paper-dark); border-radius: 10px; padding: 16px 8px 8px; }
+  .history-line { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px; color: var(--text); padding: 6px 0; border-bottom: 1px solid var(--paper-dark); }
+  .ref-tag { font-family: var(--mono); font-size: 9px; color: var(--ink-soft); background: var(--paper-dark); border-radius: 4px; padding: 1px 5px; margin-left: 6px; }
+
+  /* Basket tab */
+  .basket-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--paper-dark); font-family: var(--sans); font-size: 13px; }
+  .basket-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--ink); flex-shrink: 0; }
+
+  nav.bottomnav { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid var(--paper-dark); display: flex; padding-bottom: env(safe-area-inset-bottom, 0px); max-width: 520px; margin: 0 auto; }
+  nav.bottomnav button { flex: 1; background: none; border: none; padding: 10px 0 8px; display: flex; flex-direction: column; align-items: center; gap: 3px; color: #9C9A92; cursor: pointer; }
+  nav.bottomnav button.active { color: var(--ink); }
+  nav.bottomnav span { font-family: var(--mono); font-size: 9px; letter-spacing: 0.05em; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+// ==== CONFIGURATION SUPABASE ====
+const SUPABASE_URL = "https://bphvxxfoyopnqeuoecmu.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_whpggSlsGZdmd4drxfP0eQ_4qWNrP1P";
+// ================================
+
+const needsSetup = SUPABASE_URL.startsWith("YOUR_") || SUPABASE_ANON_KEY.startsWith("YOUR_");
+const sb = needsSetup ? null : window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const ICONS = {
+  edit: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
+  clock: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+  trend: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
+  basket: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 8h13l-1.2 11a2 2 0 0 1-2 1.8H8.7a2 2 0 0 1-2-1.8L5.5 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>',
+  trendUp: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
+  trendDown: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>',
+  minus: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  trash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+  back: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>',
+  plus: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
+};
+
+function blankRow() {
+  return { article: "", quantite: 1, poids: "", prix_kg: "", prix_unitaire: "", facture: "" };
+}
+
+let state = {
+  tab: "saisie",
+  items: [],
+  loaded: false,
+  entryDate: new Date().toISOString().slice(0, 10),
+  entryRows: [blankRow()],
+  showPasteFallback: false,
+  errMsg: "",
+  saving: false,
+  saveErr: "",
+  selectedProduct: null,
+  basketSelection: new Set()
+};
+
+function normalize(a) { return String(a).replace(/^\*+/, "").trim().toUpperCase(); }
+function formatEUR(n) {
+  if (n === null || n === undefined || isNaN(n)) return "—";
+  return Number(n).toFixed(2).replace(".", ",") + " €";
+}
+function formatDateShort(iso) {
+  if (!iso) return "?";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "2-digit" });
+}
+function refPrice(item) {
+  if (item.poids && item.prix_kg) return { value: Number(item.prix_kg), unit: "/kg" };
+  return { value: Number(item.prix_unitaire), unit: "/u" };
+}
+
+async function loadItems() {
+  if (!sb) { state.items = []; state.loaded = true; render(); return; }
+  const { data, error } = await sb.from("receipt_items").select("*").order("date_achat", { ascending: true });
+  if (error) { console.error(error); state.items = []; }
+  else { state.items = data || []; }
+  state.loaded = true;
+  render();
+}
+
+async function saveBatch() {
+  state.saveErr = "";
+  const rows = state.entryRows.filter(r => r.article.trim() !== "");
+  if (rows.length === 0) { state.saveErr = "Ajoute au moins un article."; render(); return; }
+  state.saving = true;
+  render();
+  const receiptId = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36));
+  const payload = rows.map(r => ({
+    receipt_id: receiptId,
+    date_achat: state.entryDate,
+    article: r.article.trim(),
+    quantite: r.quantite === "" ? 1 : Number(r.quantite),
+    poids: r.poids === "" ? null : Number(r.poids),
+    prix_kg: r.prix_kg === "" ? null : Number(r.prix_kg),
+    prix_unitaire: r.prix_unitaire === "" ? null : Number(r.prix_unitaire),
+    facture: Number(r.facture) || 0
+  }));
+  try {
+    const { error } = await sb.from("receipt_items").insert(payload);
+    if (error) throw new Error(error.message);
+    state.entryRows = [blankRow()];
+    state.saving = false;
+    await loadItems();
+    render();
+  } catch (err) {
+    state.saveErr = "Échec de l'enregistrement. Détail : " + (err.message || String(err));
+    state.saving = false;
+    render();
+  }
+}
+
+async function deleteReceipt(receiptId) {
+  const { error } = await sb.from("receipt_items").delete().eq("receipt_id", receiptId);
+  if (error) { console.error(error); return; }
+  state.items = state.items.filter(it => it.receipt_id !== receiptId);
+  render();
+}
+
+function addEntryRow() { state.entryRows.push(blankRow()); render(); }
+function removeEntryRow(idx) {
+  state.entryRows.splice(idx, 1);
+  if (state.entryRows.length === 0) state.entryRows.push(blankRow());
+  render();
+}
+function updateEntryRow(idx, field, value) {
+  state.entryRows[idx][field] = value;
+  render(true);
+}
+
+function parseRaw() {
+  const raw = document.getElementById("paste-box").value;
+  state.errMsg = "";
+  try {
+    const clean = raw.replace(/```json|```/g, "").trim();
+    const jsonStart = clean.indexOf("{");
+    const jsonEnd = clean.lastIndexOf("}");
+    const parsed = JSON.parse(clean.slice(jsonStart, jsonEnd + 1));
+    const srcItems = parsed.items || [];
+    if (srcItems.length === 0) throw new Error("vide");
+    state.entryDate = parsed.date || state.entryDate;
+    state.entryRows = srcItems.map(it => ({
+      article: it.article || it.description || "",
+      quantite: it.quantite ?? 1,
+      poids: it.poids ?? "",
+      prix_kg: it.prix_kg ?? "",
+      prix_unitaire: it.prixUnitaire ?? it.prix_unitaire ?? "",
+      facture: it.facture ?? it.montantTTC ?? it.prixUnitaire ?? ""
+    }));
+    state.showPasteFallback = false;
+  } catch (e) {
+    state.errMsg = "Texte non reconnu. Vérifie que tu as bien collé le bloc complet.";
+  }
+  render();
+}
+
+function trendOf(history) {
+  if (history.length < 2) return "flat";
+  const last = history[history.length - 1].price;
+  const prev = history[history.length - 2].price;
+  if (last > prev + 0.005) return "up";
+  if (last < prev - 0.005) return "down";
+  return "flat";
+}
+
+function buildProductsMap() {
+  const map = {};
+  state.items.forEach(it => {
+    const key = normalize(it.article);
+    if (!map[key]) map[key] = [];
+    const rp = refPrice(it);
+    map[key].push({ date: it.date_achat, price: rp.value, unit: rp.unit, label: it.article });
+  });
+  Object.values(map).forEach(arr => arr.sort((a, b) => (a.date || "").localeCompare(b.date || "")));
+  return map;
+}
+
+function ticketEdgeSVG(top) {
+  const teeth = 24;
+  let circles = "";
+  for (let i = 0; i < teeth; i++) circles += `<circle cx="${(i + 0.5) * (240 / teeth)}" cy="${top ? 0 : 10}" r="5" fill="var(--paper-dark)"/>`;
+  return `<svg class="ticket-edge" viewBox="0 0 240 10" preserveAspectRatio="none" style="transform:${top ? 'none' : 'scaleY(-1)'}">${circles}<rect x="0" y="${top ? 5 : 0}" width="240" height="5" fill="var(--paper)"/></svg>`;
+}
+
+function lineChartSVG(chartData, valueKey) {
+  const w = 320, h = 200, padL = 42, padR = 16, padT = 14, padB = 22;
+  const vals = chartData.map(d => d[valueKey]);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const range = (max - min) || 1;
+  const yFor = v => padT + (h - padT - padB) * (1 - (v - min) / range);
+  const xFor = i => padL + (w - padL - padR) * (chartData.length > 1 ? i / (chartData.length - 1) : 0.5);
+  const points = chartData.map((d, i) => `${xFor(i)},${yFor(d[valueKey])}`).join(" ");
+  let gridLines = "";
+  const steps = 4;
+  for (let s = 0; s <= steps; s++) {
+    const v = min + (range * s) / steps;
+    const y = yFor(v);
+    gridLines += `<line x1="${padL}" y1="${y}" x2="${w - padR}" y2="${y}" stroke="var(--paper-dark)" stroke-width="1"/>`;
+    gridLines += `<text x="${padL - 6}" y="${y + 3}" font-family="var(--mono)" font-size="9" fill="var(--ink-soft)" text-anchor="end">${v.toFixed(2)}</text>`;
+  }
+  let xLabels = "";
+  chartData.forEach((d, i) => {
+    if (i === 0 || i === chartData.length - 1 || chartData.length <= 5) {
+      xLabels += `<text x="${xFor(i)}" y="${h - 6}" font-family="var(--mono)" font-size="9" fill="var(--ink-soft)" text-anchor="middle">${d.date}</text>`;
+    }
+  });
+  let dots = "";
+  chartData.forEach((d, i) => { dots += `<circle cx="${xFor(i)}" cy="${yFor(d[valueKey])}" r="3" fill="var(--ink)"/>`; });
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;">${gridLines}<polyline points="${points}" fill="none" stroke="var(--ink)" stroke-width="2"/>${dots}${xLabels}</svg>`;
+}
+
+function computeBasketSeries() {
+  const map = buildProductsMap();
+  const selected = Array.from(state.basketSelection);
+  if (selected.length === 0) return [];
+  const allDates = new Set();
+  selected.forEach(key => (map[key] || []).forEach(h => allDates.add(h.date)));
+  const sortedDates = Array.from(allDates).sort((a, b) => a.localeCompare(b));
+  const lastKnown = {};
+  const series = [];
+  sortedDates.forEach(date => {
+    selected.forEach(key => {
+      const hit = (map[key] || []).find(h => h.date === date);
+      if (hit) lastKnown[key] = hit.price;
+    });
+    if (selected.every(key => lastKnown[key] !== undefined)) {
+      const total = selected.reduce((s, key) => s + lastKnown[key], 0);
+      series.push({ date: formatDateShort(date), total });
+    }
+  });
+  return series;
+}
+
+function render(skipFocusPreserve) {
+  const app = document.getElementById("app");
+  let html = `<header class="topbar">`;
+  if (state.tab === "product-detail") {
+    html += `<button class="back" style="display:inline-flex" onclick="goBackFromProduct()">${ICONS.back}</button>`;
+  }
+  html += `<div class="title">SUIVI PRIX · CARREFOUR MARKET</div></header>`;
+
+  if (needsSetup) {
+    html += `<div class="setup-banner">Configuration requise : remplace <code>SUPABASE_URL</code> et <code>SUPABASE_ANON_KEY</code> en haut du script.</div>`;
+  }
+
+  html += `<div class="tab-content">`;
+  if (!state.loaded) {
+    // wait
+  } else if (state.tab === "saisie") html += renderSaisie();
+  else if (state.tab === "history") html += renderHistory();
+  else if (state.tab === "products") html += renderProducts();
+  else if (state.tab === "product-detail") html += renderProductDetail();
+  else if (state.tab === "basket") html += renderBasket();
+  html += `</div>`;
+
+  html += `<nav class="bottomnav">
+    <button class="${state.tab === 'saisie' ? 'active' : ''}" onclick="switchTab('saisie')">${ICONS.edit}<span>SAISIE</span></button>
+    <button class="${state.tab === 'history' ? 'active' : ''}" onclick="switchTab('history')">${ICONS.clock}<span>HISTORIQUE</span></button>
+    <button class="${state.tab === 'products' || state.tab === 'product-detail' ? 'active' : ''}" onclick="switchTab('products')">${ICONS.trend}<span>PRODUITS</span></button>
+    <button class="${state.tab === 'basket' ? 'active' : ''}" onclick="switchTab('basket')">${ICONS.basket}<span>PANIER</span></button>
+  </nav>`;
+
+  app.innerHTML = html;
+}
+
+function switchTab(tab) {
+  state.tab = tab;
+  state.selectedProduct = null;
+  render();
+}
+
+function renderSaisie() {
+  let rowsHtml = "";
+  state.entryRows.forEach((r, idx) => {
+    rowsHtml += `
+      <div class="entry-row">
+        <div class="entry-row-top">
+          <input type="text" placeholder="Nom de l'article" value="${escapeAttr(r.article)}" oninput="updateEntryRow(${idx},'article',this.value)">
+          <button class="del-row" onclick="removeEntryRow(${idx})">${ICONS.trash}</button>
+        </div>
+        <div class="entry-grid">
+          <div><label class="field-label">QTÉ</label><input type="number" step="1" value="${r.quantite}" oninput="updateEntryRow(${idx},'quantite',this.value)"></div>
+          <div><label class="field-label">POIDS (KG)</label><input type="number" step="0.001" value="${r.poids}" oninput="updateEntryRow(${idx},'poids',this.value)"></div>
+          <div><label class="field-label">PRIX/KG</label><input type="number" step="0.01" value="${r.prix_kg}" oninput="updateEntryRow(${idx},'prix_kg',this.value)"></div>
+          <div><label class="field-label">PRIX UNIT.</label><input type="number" step="0.01" value="${r.prix_unitaire}" oninput="updateEntryRow(${idx},'prix_unitaire',this.value)"></div>
+          <div style="grid-column: span 2;"><label class="field-label">FACTURÉ (€)</label><input type="number" step="0.01" value="${r.facture}" oninput="updateEntryRow(${idx},'facture',this.value)"></div>
+        </div>
+      </div>
+    `;
+  });
+  return `
+    <div class="section-label">NOUVEAU TICKET</div>
+    <label class="field-label">DATE D'ACHAT</label>
+    <input type="date" value="${state.entryDate}" onchange="state.entryDate=this.value" style="margin-bottom:12px;">
+    ${rowsHtml}
+    <button class="btn-ghost" onclick="addEntryRow()">${ICONS.plus} Ajouter un article</button>
+    ${state.saveErr ? `<div class="err-msg">${state.saveErr}</div>` : ""}
+    <div class="actions-row">
+      <button class="btn btn-primary" ${state.saving ? "disabled" : ""} onclick="saveBatch()">${state.saving ? "Enregistrement…" : "Enregistrer le ticket"}</button>
+    </div>
+    <button class="toggle-link" onclick="state.showPasteFallback=!state.showPasteFallback; render();">${state.showPasteFallback ? "Masquer" : "Coller un bloc fourni par Claude à la place"}</button>
+    ${state.showPasteFallback ? `
+      <div style="margin-top:10px;">
+        <textarea id="paste-box" rows="6" placeholder="Colle ici le bloc JSON…"></textarea>
+        ${state.errMsg ? `<div class="err-msg">${state.errMsg}</div>` : ""}
+        <button class="btn btn-secondary" style="width:100%;margin-top:8px;" onclick="parseRaw()">Charger dans le formulaire</button>
+      </div>
+    ` : ""}
+  `;
+}
+
+function renderHistory() {
+  if (state.items.length === 0) return `<div class="empty-state">Aucun ticket enregistré pour l'instant.</div>`;
+  const byReceipt = {};
+  state.items.forEach(it => {
+    if (!byReceipt[it.receipt_id]) byReceipt[it.receipt_id] = { date: it.date_achat, items: [] };
+    byReceipt[it.receipt_id].items.push(it);
+  });
+  const receipts = Object.entries(byReceipt).sort((a, b) => (b[1].date || "").localeCompare(a[1].date || ""));
+  let html = "";
+  receipts.forEach(([rid, r]) => {
+    const total = r.items.reduce((s, it) => s + (Number(it.facture) || 0), 0);
+    let lines = "";
+    r.items.forEach(it => {
+      lines += `<div class="receipt-line"><span>${it.quantite > 1 ? it.quantite + "x " : ""}${escapeHtml(it.article)}</span><span>${formatEUR(it.facture)}</span></div>`;
+    });
+    html += `
+      <div class="receipt-block">
+        ${ticketEdgeSVG(true)}
+        <div class="receipt-body">
+          <div class="receipt-head">
+            <div class="receipt-date">${formatDateShort(r.date)}</div>
+            <button class="receipt-del" onclick="deleteReceipt('${rid}')">${ICONS.trash}</button>
+          </div>
+          ${lines}
+          <div class="receipt-total"><span>TOTAL</span><span>${formatEUR(total)}</span></div>
+        </div>
+        ${ticketEdgeSVG(false)}
+      </div>
+    `;
+  });
+  return html;
+}
+
+function renderProducts() {
+  const map = buildProductsMap();
+  const products = Object.entries(map)
+    .map(([key, history]) => ({ key, history, last: history[history.length - 1] }))
+    .sort((a, b) => (b.last.date || "").localeCompare(a.last.date || ""));
+  if (products.length === 0) return `<div class="empty-state">Enregistre au moins un ticket pour voir apparaître tes produits ici.</div>`;
+  let html = "";
+  products.forEach(p => {
+    const trend = trendOf(p.history);
+    const icon = trend === "up" ? ICONS.trendUp : trend === "down" ? ICONS.trendDown : ICONS.minus;
+    const color = trend === "up" ? "var(--red)" : trend === "down" ? "var(--green)" : "var(--ink-soft)";
+    html += `
+      <div class="product-row" onclick="openProduct('${escapeAttr(p.key)}')">
+        <div>
+          <div class="product-name">${escapeHtml(p.key)}</div>
+          <div class="product-meta">${p.history.length} achat${p.history.length > 1 ? "s" : ""} · dernier le ${formatDateShort(p.last.date)}</div>
+        </div>
+        <div class="product-price-wrap">
+          <span class="product-price">${formatEUR(p.last.price)}<span class="ref-tag">${p.last.unit}</span></span>
+          <span style="color:${color}">${icon}</span>
+        </div>
+      </div>
+    `;
+  });
+  return html;
+}
+
+function openProduct(key) { state.selectedProduct = key; state.tab = "product-detail"; render(); }
+function goBackFromProduct() { state.selectedProduct = null; state.tab = "products"; render(); }
+
+function renderProductDetail() {
+  const map = buildProductsMap();
+  const history = map[state.selectedProduct] || [];
+  if (history.length === 0) return `<div class="empty-state">Produit introuvable.</div>`;
+  const first = history[0].price;
+  const last = history[history.length - 1].price;
+  const delta = last - first;
+  const pct = first ? (delta / first) * 100 : 0;
+  const deltaColor = delta > 0 ? "var(--red)" : delta < 0 ? "var(--green)" : "var(--ink-soft)";
+  const chartData = history.map(h => ({ date: formatDateShort(h.date), prix: h.price }));
+  let historyLines = "";
+  history.slice().reverse().forEach(h => {
+    historyLines += `<div class="history-line"><span>${formatDateShort(h.date)}</span><span>${formatEUR(h.price)}<span class="ref-tag">${h.unit}</span></span></div>`;
+  });
+  return `
+    <div class="product-title">${escapeHtml(state.selectedProduct)}</div>
+    <div class="product-delta" style="color:${deltaColor}">
+      ${delta === 0 ? "stable" : (delta > 0 ? "+" : "") + delta.toFixed(2) + " € (" + (pct > 0 ? "+" : "") + pct.toFixed(1) + "%) depuis le premier ticket"}
+    </div>
+    <div class="chart-box">${lineChartSVG(chartData, "prix")}</div>
+    <div style="margin-top:16px;">${historyLines}</div>
+  `;
+}
+
+function renderBasket() {
+  const map = buildProductsMap();
+  const keys = Object.keys(map).sort();
+  if (keys.length === 0) return `<div class="empty-state">Enregistre des tickets pour composer un panier à suivre.</div>`;
+  let checklist = "";
+  keys.forEach(key => {
+    const checked = state.basketSelection.has(key) ? "checked" : "";
+    checklist += `<label class="basket-item"><input type="checkbox" ${checked} onchange="toggleBasketItem('${escapeAttr(key)}', this.checked)">${escapeHtml(key)}</label>`;
+  });
+  const series = computeBasketSeries();
+  let chartSection = "";
+  if (state.basketSelection.size === 0) {
+    chartSection = `<div class="empty-state">Sélectionne au moins un article ci-dessous.</div>`;
+  } else if (series.length === 0) {
+    chartSection = `<div class="empty-state">Pas encore assez de dates communes entre les articles sélectionnés.</div>`;
+  } else {
+    const first = series[0].total, last = series[series.length - 1].total;
+    const delta = last - first;
+    const pct = first ? (delta / first) * 100 : 0;
+    const deltaColor = delta > 0 ? "var(--red)" : delta < 0 ? "var(--green)" : "var(--ink-soft)";
+    chartSection = `
+      <div class="product-delta" style="color:${deltaColor}">
+        Panier : ${delta === 0 ? "stable" : (delta > 0 ? "+" : "") + delta.toFixed(2) + " € (" + (pct > 0 ? "+" : "") + pct.toFixed(1) + "%)"} — actuellement ${formatEUR(last)}
+      </div>
+      <div class="chart-box">${lineChartSVG(series, "total")}</div>
+    `;
+  }
+  return `
+    <div class="section-label">ÉVOLUTION DU PANIER</div>
+    ${chartSection}
+    <div class="section-label">ARTICLES DU PANIER</div>
+    ${checklist}
+  `;
+}
+
+function toggleBasketItem(key, checked) {
+  if (checked) state.basketSelection.add(key);
+  else state.basketSelection.delete(key);
+  render();
+}
+
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g, "&#96;"); }
+
+render();
+loadItems();
+</script>
+</body>
+</html>
