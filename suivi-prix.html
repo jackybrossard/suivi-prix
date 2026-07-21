@@ -469,7 +469,6 @@ function render(){
   const prevId = (prevActive && prevActive.id) ? prevActive.id : null;
   const prevSelStart = prevActive ? prevActive.selectionStart : null;
   const prevSelEnd = prevActive ? prevActive.selectionEnd : null;
-  co
 
   const app = document.getElementById("app");
   let html = `<header class="topbar"><div class="title">SUIVI PRIX</div></header>`;
@@ -502,7 +501,8 @@ function render(){
       if(typeof prevSelStart === "number" && el.setSelectionRange){
         try{ el.setSelectionRange(prevSelStart, prevSelEnd); }catch(e){}
       }
-    
+    }
+  }
 }
 
 function switchTab(t){ state.tab=t; render(); }
